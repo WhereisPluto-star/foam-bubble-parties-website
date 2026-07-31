@@ -19,6 +19,9 @@ setInterval(updateCountdown, 1000);
 const form = document.getElementById('interest-form');
 const status = document.getElementById('form-status');
 const earlyAccessCount = document.getElementById('early-access-count');
+const nameInput = document.getElementById('name');
+const emailInput = document.getElementById('email');
+const phoneInput = document.getElementById('phone');
 const earlyAccessModal = document.getElementById('early-access-modal');
 let formIsVisible = true;
 let hasScrolled = false;
@@ -65,6 +68,47 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeEarlyAccessOffer();
 });
 
+function isObviousFakePhone(digits) {
+  return /^(\d)\1{9}$/.test(digits)
+    || ['0123456789', '1234567890', '9876543210'].includes(digits);
+}
+
+function formatPhoneNumber(value) {
+  const digits = value.replace(/\D/g, '').slice(0, 10);
+  if (digits.length < 4) return digits;
+  if (digits.length < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function validateLeadFields() {
+  const name = nameInput.value.trim().replace(/\s+/g, ' ');
+  const email = emailInput.value.trim().toLowerCase();
+  const phoneDigits = phoneInput.value.replace(/\D/g, '');
+
+  nameInput.value = name;
+  emailInput.value = email;
+  phoneInput.value = formatPhoneNumber(phoneDigits);
+
+  nameInput.setCustomValidity(name.length >= 2 && /[a-zA-Z]/.test(name)
+    ? ''
+    : 'Please enter your name.');
+  emailInput.setCustomValidity(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ? ''
+    : 'Please enter a valid email address.');
+  phoneInput.setCustomValidity(phoneDigits.length === 10 && !isObviousFakePhone(phoneDigits)
+    ? ''
+    : 'Please enter a valid 10-digit U.S. phone number.');
+}
+
+phoneInput.addEventListener('input', () => {
+  phoneInput.value = formatPhoneNumber(phoneInput.value);
+  phoneInput.setCustomValidity('');
+});
+
+[nameInput, emailInput, phoneInput].forEach((field) => {
+  field.addEventListener('blur', validateLeadFields);
+});
+
 async function updateEarlyAccessCount() {
   if (!GOOGLE_SHEETS_WEB_APP_URL || !earlyAccessCount) return;
 
@@ -103,6 +147,7 @@ document.querySelectorAll('.faq-trigger').forEach((trigger) => {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  validateLeadFields();
   if (!form.reportValidity()) return;
   if (!GOOGLE_SHEETS_WEB_APP_URL) {
     status.className = 'form-status error';

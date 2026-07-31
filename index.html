@@ -84,11 +84,11 @@
               <p>Join the early-access list and be the first to book when reservations open on January 1, 2027.</p>
               <form id="interest-form" novalidate>
                 <label for="name">Your name</label>
-                <input id="name" name="name" type="text" autocomplete="name" required>
+                <input id="name" name="name" type="text" autocomplete="name" minlength="2" required>
                 <label for="email">Email address</label>
                 <input id="email" name="email" type="email" autocomplete="email" required>
-                <label for="phone">Phone number <span>(optional)</span></label>
-                <input id="phone" name="phone" type="tel" autocomplete="tel">
+                <label for="phone">Phone number</label>
+                <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel-national" pattern="\([0-9]{3}\) [0-9]{3}-[0-9]{4}" maxlength="14" placeholder="(937) 555-1234" required>
                 <label for="zip">ZIP code</label>
                 <input id="zip" name="zip" type="text" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" placeholder="45402" required>
                 <label for="event-type">What are you planning?</label>
@@ -104,6 +104,10 @@
                   <input id="marketing-consent" name="marketingConsent" type="checkbox" value="Yes">
                   <span>I agree to receive occasional email and text updates from Foam Bubble Parties. Message and data rates may apply. Reply STOP to opt out.</span>
                 </label>
+                <div class="honeypot" aria-hidden="true">
+                  <label for="website">Leave this field empty</label>
+                  <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+                </div>
                 <button type="submit">Join the early-access list <span aria-hidden="true">→</span></button>
                 <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
               </form>
