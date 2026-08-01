@@ -3,6 +3,7 @@ const SHEET_NAME = 'Early Access';
 const FIRST_LEAD_ROW = 6;
 const SUBMITTED_COLUMN = 2; // Column B in the lead tracker.
 const EMAIL_COLUMN = 4; // Column D in the lead tracker.
+const PHONE_COLUMN = 5; // Column E in the lead tracker.
 const ZIP_COLUMN = 11; // Column K in the lead tracker.
 const MARKETING_CONSENT_COLUMN = 14; // Column N in the lead tracker.
 const TURNSTILE_SECRET_PROPERTY = 'TURNSTILE_SECRET';
@@ -12,27 +13,40 @@ function doPost(event) {
     const parameters = (event && event.parameter) || {};
     const lead = validateLead(parameters);
     verifyTurnstile(parameters);
-    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-    if (!sheet) throw new Error(`Create a sheet tab named "${SHEET_NAME}" first.`);
-    if (hasExistingEmail(sheet, lead.email)) {
-      return createJsonResponse({ success: false, error: 'This email is already on the early-access list.' });
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) {
+      throw new Error('The early-access list is busy. Please try again shortly.');
     }
 
-    const row = getFirstOpenLeadRow(sheet);
-    sheet.getRange(row, SUBMITTED_COLUMN, 1, 6).setValues([[
-      new Date(),
-      lead.name,
-      lead.email,
-      lead.phone,
-      '',
-      lead.eventType
-    ]]);
-    sheet.getRange(row, ZIP_COLUMN).setValue(lead.zip);
-    sheet.getRange(row, MARKETING_CONSENT_COLUMN).setValue(
-      lead.marketingConsent === 'Yes' ? 'Yes' : 'No'
-    );
+    try {
+      const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+      if (!sheet) throw new Error(`Create a sheet tab named "${SHEET_NAME}" first.`);
+      if (hasExistingLead(sheet, lead)) {
+        return createJsonResponse({
+          success: true,
+          duplicate: true,
+          message: "You're already on the Early Access List!"
+        });
+      }
 
-    return createJsonResponse({ success: true });
+      const row = getFirstOpenLeadRow(sheet);
+      sheet.getRange(row, SUBMITTED_COLUMN, 1, 6).setValues([[
+        new Date(),
+        lead.name,
+        lead.email,
+        lead.phone,
+        '',
+        lead.eventType
+      ]]);
+      sheet.getRange(row, ZIP_COLUMN).setValue(lead.zip);
+      sheet.getRange(row, MARKETING_CONSENT_COLUMN).setValue(
+        lead.marketingConsent === 'Yes' ? 'Yes' : 'No'
+      );
+
+      return createJsonResponse({ success: true });
+    } finally {
+      lock.releaseLock();
+    }
   } catch (error) {
     return createJsonResponse({ success: false, error: error.message });
   }
@@ -82,7 +96,7 @@ function validateLead(parameters) {
 
   const name = String(parameters.name || '').trim().replace(/\s+/g, ' ');
   const email = String(parameters.email || '').trim().toLowerCase();
-  const phoneDigits = String(parameters.phone || '').replace(/\D/g, '');
+  const phoneDigits = normalizePhone(parameters.phone);
   const zip = String(parameters.zip || '').trim();
   const eventType = String(parameters.eventType || '').trim();
 
@@ -117,14 +131,21 @@ function isObviousFakePhone(phoneDigits) {
     || ['0123456789', '1234567890', '9876543210'].includes(phoneDigits);
 }
 
-function hasExistingEmail(sheet, email) {
+function normalizePhone(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function hasExistingLead(sheet, lead) {
   const lastRow = sheet.getLastRow();
   if (lastRow < FIRST_LEAD_ROW) return false;
 
   return sheet
-    .getRange(FIRST_LEAD_ROW, EMAIL_COLUMN, lastRow - FIRST_LEAD_ROW + 1, 1)
+    .getRange(FIRST_LEAD_ROW, EMAIL_COLUMN, lastRow - FIRST_LEAD_ROW + 1, PHONE_COLUMN - EMAIL_COLUMN + 1)
     .getValues()
-    .some(([existingEmail]) => String(existingEmail || '').trim().toLowerCase() === email);
+    .some(([existingEmail, existingPhone]) => (
+      String(existingEmail || '').trim().toLowerCase() === lead.email
+      || normalizePhone(existingPhone) === normalizePhone(lead.phone)
+    ));
 }
 
 function doGet(event) {

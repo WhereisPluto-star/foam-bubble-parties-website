@@ -1,6 +1,8 @@
 // Paste the deployed Google Apps Script web-app URL here after completing google-sheets/SETUP.md.
 const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx0LqHFz9e4NZTT5sY7QB9BXYQNkLTFU-sz8jzdVl00QND7haAjd2xzU1qVrW_PnjNZQQ/exec';
 const bookingOpens = new Date('2027-01-01T00:00:00-05:00').getTime();
+const FORM_RATE_LIMIT_MS = 15000;
+const FORM_RATE_LIMIT_KEY = 'foamBubbleEarlyAccessLastSubmitAt';
 
 function updateCountdown() {
   const remaining = Math.max(0, bookingOpens - Date.now());
@@ -163,12 +165,20 @@ form.addEventListener('submit', async (event) => {
     status.textContent = 'The early-access list is being connected. Please check back shortly.';
     return;
   }
+  const lastSubmittedAt = Number(sessionStorage.getItem(FORM_RATE_LIMIT_KEY) || 0);
+  if (Date.now() - lastSubmittedAt < FORM_RATE_LIMIT_MS) {
+    status.className = 'form-status error';
+    status.textContent = 'Please wait a few seconds before trying again.';
+    return;
+  }
 
   const submitButton = form.querySelector('button');
   submitButton.disabled = true;
   submitButton.textContent = 'Joining…';
   status.className = 'form-status';
   status.textContent = '';
+  // Session-only timestamp: it limits rapid retries without storing personal data.
+  sessionStorage.setItem(FORM_RATE_LIMIT_KEY, String(Date.now()));
 
   try {
     const response = await fetch(GOOGLE_SHEETS_WEB_APP_URL, {
@@ -188,6 +198,11 @@ form.addEventListener('submit', async (event) => {
 
     form.reset();
     resetTurnstile();
+    if (result.duplicate) {
+      status.className = 'form-status success';
+      status.textContent = 'You’re already on the Early Access List! We’ll contact you when booking opens.';
+      return;
+    }
     updateEarlyAccessCount();
     status.className = 'form-status success';
     status.textContent = 'You’re on the list. We’ll be in touch before booking opens.';
