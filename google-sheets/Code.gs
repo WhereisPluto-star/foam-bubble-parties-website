@@ -5,11 +5,13 @@ const SUBMITTED_COLUMN = 2; // Column B in the lead tracker.
 const EMAIL_COLUMN = 4; // Column D in the lead tracker.
 const ZIP_COLUMN = 11; // Column K in the lead tracker.
 const MARKETING_CONSENT_COLUMN = 14; // Column N in the lead tracker.
+const TURNSTILE_SECRET_PROPERTY = 'TURNSTILE_SECRET';
 
 function doPost(event) {
   try {
     const parameters = (event && event.parameter) || {};
     const lead = validateLead(parameters);
+    verifyTurnstile(parameters);
     const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
     if (!sheet) throw new Error(`Create a sheet tab named "${SHEET_NAME}" first.`);
     if (hasExistingEmail(sheet, lead.email)) {
@@ -33,6 +35,43 @@ function doPost(event) {
     return createJsonResponse({ success: true });
   } catch (error) {
     return createJsonResponse({ success: false, error: error.message });
+  }
+}
+
+function verifyTurnstile(parameters) {
+  const token = String(parameters['cf-turnstile-response'] || '').trim();
+  if (!token) {
+    throw new Error('Please complete the security check.');
+  }
+
+  // Apps Script has no process.env. Store this secret in Script Properties under
+  // TURNSTILE_SECRET so it is never committed to this project.
+  const secret = PropertiesService.getScriptProperties().getProperty(TURNSTILE_SECRET_PROPERTY);
+  if (!secret) {
+    console.error('TURNSTILE_SECRET is not configured in Script Properties.');
+    throw new Error('We could not verify this submission. Please try again later.');
+  }
+
+  let verification;
+  try {
+    const response = UrlFetchApp.fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'post',
+      contentType: 'application/x-www-form-urlencoded',
+      payload: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
+      muteHttpExceptions: true
+    });
+    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+      throw new Error(`siteverify ${response.getResponseCode()}`);
+    }
+    verification = JSON.parse(response.getContentText());
+  } catch (error) {
+    console.error(`Turnstile verification failed: ${error.message}`);
+    throw new Error('We could not verify this submission. Please try again.');
+  }
+
+  if (verification.success !== true) {
+    console.warn(`Turnstile rejected submission: ${JSON.stringify(verification['error-codes'] || [])}`);
+    throw new Error('Please complete the security check and try again.');
   }
 }
 

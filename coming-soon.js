@@ -100,6 +100,10 @@ function validateLeadFields() {
     : 'Please enter a valid 10-digit U.S. phone number.');
 }
 
+function resetTurnstile() {
+  if (window.turnstile) window.turnstile.reset();
+}
+
 phoneInput.addEventListener('input', () => {
   phoneInput.value = formatPhoneNumber(phoneInput.value);
   phoneInput.setCustomValidity('');
@@ -149,6 +153,11 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   validateLeadFields();
   if (!form.reportValidity()) return;
+  if (!form.querySelector('[name="cf-turnstile-response"]')?.value) {
+    status.className = 'form-status error';
+    status.textContent = 'Please complete the security check.';
+    return;
+  }
   if (!GOOGLE_SHEETS_WEB_APP_URL) {
     status.className = 'form-status error';
     status.textContent = 'The early-access list is being connected. Please check back shortly.';
@@ -178,6 +187,7 @@ form.addEventListener('submit', async (event) => {
     }
 
     form.reset();
+    resetTurnstile();
     updateEarlyAccessCount();
     status.className = 'form-status success';
     status.textContent = 'You’re on the list. We’ll be in touch before booking opens.';
@@ -185,6 +195,7 @@ form.addEventListener('submit', async (event) => {
     console.error('Early-access form submission failed:', error);
     status.className = 'form-status error';
     status.textContent = 'We couldn’t save your details. Please try again shortly.';
+    resetTurnstile();
   } finally {
     submitButton.disabled = false;
     submitButton.innerHTML = 'Join the early-access list <span aria-hidden="true">→</span>';
