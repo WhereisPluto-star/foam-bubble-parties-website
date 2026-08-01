@@ -18,7 +18,6 @@ setInterval(updateCountdown, 1000);
 
 const form = document.getElementById('interest-form');
 const status = document.getElementById('form-status');
-const earlyAccessCount = document.getElementById('early-access-count');
 const nameInput = document.getElementById('name');
 const emailInput = document.getElementById('email');
 const phoneInput = document.getElementById('phone');
@@ -113,25 +112,6 @@ phoneInput.addEventListener('input', () => {
   field.addEventListener('blur', validateLeadFields);
 });
 
-async function updateEarlyAccessCount() {
-  if (!GOOGLE_SHEETS_WEB_APP_URL || !earlyAccessCount) return;
-
-  try {
-    const countUrl = new URL(GOOGLE_SHEETS_WEB_APP_URL);
-    countUrl.searchParams.set('action', 'count');
-    const response = await fetch(countUrl);
-    const result = await response.json();
-    if (!response.ok || !result.success || !Number.isInteger(result.count)) return;
-
-    earlyAccessCount.querySelector('strong').textContent = result.count;
-    earlyAccessCount.hidden = false;
-  } catch (error) {
-    console.error('Early-access count could not be loaded:', error);
-  }
-}
-
-updateEarlyAccessCount();
-
 document.querySelectorAll('.faq-trigger').forEach((trigger) => {
   const toggleFaq = () => {
     const panel = document.getElementById(trigger.getAttribute('aria-controls'));
@@ -169,29 +149,24 @@ form.addEventListener('submit', async (event) => {
   status.className = 'form-status';
   status.textContent = '';
   try {
+    const submission = new FormData(form);
+    submission.set('source', 'Website Early Access');
+    submission.set('status', 'New');
     const response = await fetch(GOOGLE_SHEETS_WEB_APP_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
       },
-      body: new URLSearchParams(new FormData(form))
+      body: new URLSearchParams(submission)
     });
 
     if (!response.ok) throw new Error('server');
 
     const result = await response.json();
-    if (!result.ok && !result.success) {
-      throw new Error(result.error === 'turnstile' ? 'turnstile' : 'server');
-    }
+    if (!result.success) throw new Error('server');
 
     form.reset();
     resetTurnstile();
-    if (result.duplicate) {
-      status.className = 'form-status success';
-      status.textContent = 'You’re already on the Early Access List! We’ll contact you when booking opens.';
-      return;
-    }
-    updateEarlyAccessCount();
     status.className = 'form-status success';
     status.textContent = 'You’re on the Early Access List!';
   } catch (error) {
