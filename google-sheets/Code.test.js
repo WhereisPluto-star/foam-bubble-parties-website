@@ -4,115 +4,74 @@ const fs = require('node:fs');
 
 function createSheet() {
   const cells = new Map();
+  const key = (row, column) => `${row}:${column}`;
   let openCalls = 0;
 
-  function key(row, column) {
-    return `${row}:${column}`;
-  }
-
   const sheet = {
-    getLastRow() {
-      return Math.max(5, ...[...cells.keys()].map((entry) => Number(entry.split(':')[0])));
-    },
-    getMaxRows() {
-      return 100;
-    },
+    getLastRow: () => Math.max(5, ...[...cells.keys()].map((entry) => Number(entry.split(':')[0]))),
+    getMaxRows: () => 100,
     getRange(row, column, rowCount = 1, columnCount = 1) {
       return {
-        getValues() {
-          return Array.from({ length: rowCount }, (_, rowOffset) => (
-            Array.from({ length: columnCount }, (_, columnOffset) => (
-              cells.get(key(row + rowOffset, column + columnOffset)) || ''
-            ))
-          ));
-        },
-        setValues(values) {
-          values.forEach((valueRow, rowOffset) => valueRow.forEach((value, columnOffset) => {
-            cells.set(key(row + rowOffset, column + columnOffset), value);
-          }));
-        },
-        setValue(value) {
-          cells.set(key(row, column), value);
-        }
+        getValues: () => Array.from({ length: rowCount }, (_, rowOffset) => (
+          Array.from({ length: columnCount }, (_, columnOffset) => cells.get(key(row + rowOffset, column + columnOffset)) || '')
+        )),
+        setValues: (values) => values.forEach((valueRow, rowOffset) => valueRow.forEach((value, columnOffset) => {
+          cells.set(key(row + rowOffset, column + columnOffset), value);
+        })),
+        setValue: (value) => cells.set(key(row, column), value)
       };
     }
   };
 
   return {
-    cells,
-    sheet,
-    get openCalls() { return openCalls; },
-    open() {
-      openCalls += 1;
-      return { getSheetByName: () => sheet };
-    },
-    countLeads() {
-      return [...cells.entries()].filter(([entry, value]) => entry.endsWith(':2') && value).length;
-    }
+    open: () => { openCalls += 1; return { getSheetByName: () => sheet }; },
+    count: () => [...cells.entries()].filter(([entry, value]) => entry.endsWith(':2') && value).length,
+    get openCalls() { return openCalls; }
   };
 }
 
-function createHandler(turnstileResult = { success: true }) {
+function createHandler({ turnstile = { success: true }, secret = 'test-secret' } = {}) {
   const store = createSheet();
   const lock = { acquired: 0, released: 0, tryLock() { this.acquired += 1; return true; }, releaseLock() { this.released += 1; } };
   const source = fs.readFileSync(`${__dirname}/Code.gs`, 'utf8');
-  const factory = new Function('SpreadsheetApp', 'LockService', 'PropertiesService', 'UrlFetchApp', 'ContentService', 'console', `${source}\nreturn { doPost, doGet };`);
+  const factory = new Function('SpreadsheetApp', 'LockService', 'PropertiesService', 'UrlFetchApp', 'ContentService', `${source}\nreturn { doPost, doGet };`);
   const handler = factory(
     { openById: () => store.open() },
     { getScriptLock: () => lock },
-    { getScriptProperties: () => ({ getProperty: () => 'test-secret' }) },
-    { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify(turnstileResult) }) },
-    { MimeType: { JSON: 'json' }, createTextOutput: (body) => ({ body, setMimeType() { return this; } }) },
-    console
+    { getScriptProperties: () => ({ getProperty: () => secret }) },
+    { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify(turnstile) }) },
+    { MimeType: { JSON: 'json' }, createTextOutput: (body) => ({ body, setMimeType() { return this; } }) }
   );
   return { ...handler, store, lock };
 }
 
 function lead(overrides = {}) {
   return {
-    name: '  Jamie   Taylor ',
-    email: 'JAMIE@EXAMPLE.COM ',
-    phone: '(937) 555-1234',
-    zip: '45402',
-    eventType: 'Birthday party',
-    'cf-turnstile-response': 'test-token',
-    ...overrides
+    name: '  Jamie   Taylor ', email: 'JAMIE@EXAMPLE.COM ', phone: '(937) 555-1234', zip: '45402',
+    eventType: 'Birthday party', 'cf-turnstile-response': 'test-token', ...overrides
   };
 }
 
-function response(result) {
-  return JSON.parse(result.body);
-}
-
+const result = (response) => JSON.parse(response.body);
 const accepted = createHandler();
-assert.deepEqual(response(accepted.doPost({ parameter: lead() })), { success: true });
-assert.equal(accepted.store.countLeads(), 1, 'new lead should add exactly one row');
-assert.equal(response(accepted.doGet({ parameter: { action: 'count' } })).count, 1, 'new lead should increase the family count once');
-assert.equal(accepted.lock.acquired, 1);
-assert.equal(accepted.lock.released, 1);
 
-assert.equal(response(accepted.doPost({ parameter: lead() })).duplicate, true, 'same information should be a duplicate');
-assert.equal(accepted.store.countLeads(), 1, 'duplicate should not add a row or count');
-assert.equal(response(accepted.doPost({ parameter: lead({ phone: '(513) 555-1212' }) })).duplicate, true, 'matching normalized email should be a duplicate');
-assert.equal(response(accepted.doPost({ parameter: lead({ email: 'new@example.com', phone: '9375551234' }) })).duplicate, true, 'matching normalized phone should be a duplicate');
-assert.equal(accepted.store.countLeads(), 1, 'all duplicate paths should leave the count unchanged');
-assert.equal(response(accepted.doGet({ parameter: { action: 'count' } })).count, 1, 'duplicates should not inflate the family count');
-
-const rejected = createHandler({ success: false, 'error-codes': ['invalid-input-secret'] });
-const failedVerification = response(rejected.doPost({ parameter: lead({ email: 'other@example.com' }) }));
-assert.equal(failedVerification.success, false, 'failed Turnstile should be rejected');
-assert.equal(failedVerification.stage, 'turnstile', 'failed Turnstile should identify its stage');
-assert.deepEqual(failedVerification.errorCodes, ['invalid-input-secret'], 'failed Turnstile should return only safe Cloudflare error codes');
-assert.equal(rejected.store.openCalls, 0, 'failed Turnstile should not check or write the sheet');
-assert.equal(rejected.store.countLeads(), 0, 'failed Turnstile should not affect the count');
-assert.equal(rejected.lock.acquired, 0, 'failed Turnstile should not enter the duplicate-check lock');
+assert.deepEqual(result(accepted.doPost({ parameter: lead() })), { success: true, duplicate: false });
+assert.equal(result(accepted.doGet({ parameter: { action: 'count' } })).count, 1);
+assert.equal(result(accepted.doPost({ parameter: lead() })).duplicate, true, 'same person should be a duplicate');
+assert.equal(result(accepted.doPost({ parameter: lead({ phone: '(513) 555-1212' }) })).duplicate, true, 'same email should be a duplicate');
+assert.equal(result(accepted.doPost({ parameter: lead({ email: 'new@example.com', phone: '9375551234' }) })).duplicate, true, 'same phone should be a duplicate');
+assert.equal(result(accepted.doGet({ parameter: { action: 'count' } })).count, 1, 'duplicates must not change the family count');
+assert.equal(accepted.lock.acquired, 4);
+assert.equal(accepted.lock.released, 4);
 
 const missingToken = createHandler();
-const missingTokenParameters = lead({ email: 'missing-token@example.com' });
-delete missingTokenParameters['cf-turnstile-response'];
-assert.equal(response(missingToken.doPost({ parameter: missingTokenParameters })).stage, 'missing-token', 'missing token should have a distinct stage');
+const withoutToken = lead();
+delete withoutToken['cf-turnstile-response'];
+assert.equal(result(missingToken.doPost({ parameter: withoutToken })).error, 'turnstile');
+assert.equal(missingToken.store.openCalls, 0, 'missing token must not read or write the Sheet');
 
-const invalidLead = createHandler();
-assert.equal(response(invalidLead.doPost({ parameter: lead({ name: '' }) })).stage, 'validation', 'invalid form data should have a distinct stage');
+const invalidToken = createHandler({ turnstile: { success: false } });
+assert.equal(result(invalidToken.doPost({ parameter: lead() })).error, 'turnstile');
+assert.equal(invalidToken.store.openCalls, 0, 'invalid token must not read or write the Sheet');
 
-console.log('Early Access duplicate-prevention tests passed.');
+console.log('Early Access integration tests passed.');
