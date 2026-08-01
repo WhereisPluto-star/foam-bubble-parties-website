@@ -9,10 +9,18 @@ const MARKETING_CONSENT_COLUMN = 14; // Column N in the lead tracker.
 const TURNSTILE_SECRET_PROPERTY = 'TURNSTILE_SECRET';
 
 function doPost(event) {
+  const parameters = (event && event.parameter) || {};
+  const diagnosticLead = normalizeLeadForDiagnostics(parameters);
+  let validationPassed = false;
+  let turnstileVerified = false;
+
+  logIncomingDiagnostics(parameters, diagnosticLead);
+
   try {
-    const parameters = (event && event.parameter) || {};
     const lead = validateLead(parameters);
+    validationPassed = true;
     verifyTurnstile(parameters);
+    turnstileVerified = true;
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(10000)) {
       throw new Error('The early-access list is busy. Please try again shortly.');
@@ -21,7 +29,10 @@ function doPost(event) {
     try {
       const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
       if (!sheet) throw new Error(`Create a sheet tab named "${SHEET_NAME}" first.`);
-      if (hasExistingLead(sheet, lead)) {
+      const duplicateCheck = findExistingLead(sheet, lead);
+      logDuplicateCheck(diagnosticLead, duplicateCheck);
+      if (duplicateCheck.duplicate) {
+        logFinalDecision('duplicate');
         return createJsonResponse({
           success: true,
           duplicate: true,
@@ -30,6 +41,7 @@ function doPost(event) {
       }
 
       const row = getFirstOpenLeadRow(sheet);
+      logFinalDecision('accepted');
       sheet.getRange(row, SUBMITTED_COLUMN, 1, 6).setValues([[
         new Date(),
         lead.name,
@@ -48,6 +60,16 @@ function doPost(event) {
       lock.releaseLock();
     }
   } catch (error) {
+    if (!turnstileVerified) {
+      logSkippedDuplicateCheck();
+    }
+    const decision = !validationPassed
+      ? 'validation failed'
+      : !turnstileVerified
+        ? 'Turnstile failed'
+        : 'other error';
+    logFinalDecision(decision);
+    console.error(`Early Access submission error: ${error.message}`);
     return createJsonResponse({ success: false, error: error.message });
   }
 }
@@ -135,17 +157,72 @@ function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
-function hasExistingLead(sheet, lead) {
+function findExistingLead(sheet, lead) {
   const lastRow = sheet.getLastRow();
-  if (lastRow < FIRST_LEAD_ROW) return false;
+  if (lastRow < FIRST_LEAD_ROW) {
+    return { duplicate: false, rowsScanned: 0, emailMatch: false, phoneMatch: false };
+  }
 
-  return sheet
+  const leads = sheet
     .getRange(FIRST_LEAD_ROW, EMAIL_COLUMN, lastRow - FIRST_LEAD_ROW + 1, PHONE_COLUMN - EMAIL_COLUMN + 1)
-    .getValues()
-    .some(([existingEmail, existingPhone]) => (
-      String(existingEmail || '').trim().toLowerCase() === lead.email
-      || normalizePhone(existingPhone) === normalizePhone(lead.phone)
-    ));
+    .getValues();
+  const emailMatch = leads.some(([existingEmail]) => (
+    String(existingEmail || '').trim().toLowerCase() === lead.email
+  ));
+  const phoneMatch = leads.some(([, existingPhone]) => (
+    normalizePhone(existingPhone) === normalizePhone(lead.phone)
+  ));
+
+  return {
+    duplicate: emailMatch || phoneMatch,
+    rowsScanned: leads.length,
+    emailMatch,
+    phoneMatch
+  };
+}
+
+function normalizeLeadForDiagnostics(parameters) {
+  return {
+    email: String(parameters.email || '').trim().toLowerCase(),
+    phone: normalizePhone(parameters.phone)
+  };
+}
+
+function logIncomingDiagnostics(parameters, lead) {
+  console.log(`Incoming parameter names: ${JSON.stringify(Object.keys(parameters).sort())}`);
+  console.log(`Turnstile token received: ${Boolean(String(parameters['cf-turnstile-response'] || '').trim())}`);
+  console.log(`Normalized email: ${maskEmail(lead.email)}`);
+  console.log(`Normalized phone: ${maskPhone(lead.phone)}`);
+  console.log(`Sheet name to open: ${SHEET_NAME}`);
+  console.log(`Duplicate columns: email D (${EMAIL_COLUMN}), phone E (${PHONE_COLUMN})`);
+}
+
+function logDuplicateCheck(lead, duplicateCheck) {
+  console.log(`Existing rows scanned: ${duplicateCheck.rowsScanned}`);
+  console.log(`Email match found: ${duplicateCheck.emailMatch}`);
+  console.log(`Phone match found: ${duplicateCheck.phoneMatch}`);
+  console.log(`Duplicate check values: email ${maskEmail(lead.email)}, phone ${maskPhone(lead.phone)}`);
+}
+
+function logSkippedDuplicateCheck() {
+  console.log('Existing rows scanned: 0 (not checked)');
+  console.log('Email match found: not checked');
+  console.log('Phone match found: not checked');
+}
+
+function logFinalDecision(decision) {
+  console.log(`Final decision: ${decision}`);
+}
+
+function maskEmail(email) {
+  if (!email) return '[empty]';
+  const [localPart, domain = ''] = email.split('@');
+  return `${localPart.slice(0, 1) || '*'}***${domain ? `@${domain}` : ''}`;
+}
+
+function maskPhone(phone) {
+  if (!phone) return '[empty]';
+  return `***-***-${phone.slice(-4)}`;
 }
 
 function doGet(event) {
