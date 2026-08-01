@@ -106,6 +106,18 @@ function resetTurnstile() {
   if (window.turnstile) window.turnstile.reset();
 }
 
+function formatDiagnosticSubmissionError(result) {
+  const stage = typeof result.stage === 'string' ? result.stage : '';
+  const errorCode = Array.isArray(result.errorCodes)
+    ? result.errorCodes.find((code) => typeof code === 'string')
+    : '';
+
+  if (stage) {
+    return `Submission failed: ${stage}${errorCode ? ` — ${errorCode}` : ''}`;
+  }
+  return result.message || 'The early-access service did not confirm the submission.';
+}
+
 phoneInput.addEventListener('input', () => {
   phoneInput.value = formatPhoneNumber(phoneInput.value);
   phoneInput.setCustomValidity('');
@@ -193,7 +205,7 @@ form.addEventListener('submit', async (event) => {
 
     const result = await response.json();
     if (!result.ok && !result.success) {
-      throw new Error(result.error || 'The early-access service did not confirm the submission.');
+      throw new Error(formatDiagnosticSubmissionError(result));
     }
 
     form.reset();
@@ -209,7 +221,7 @@ form.addEventListener('submit', async (event) => {
   } catch (error) {
     console.error('Early-access form submission failed:', error);
     status.className = 'form-status error';
-    status.textContent = 'We couldn’t save your details. Please try again shortly.';
+    status.textContent = error.message || 'We couldn’t save your details. Please try again shortly.';
     resetTurnstile();
   } finally {
     submitButton.disabled = false;

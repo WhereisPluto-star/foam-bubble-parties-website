@@ -52,7 +52,7 @@ function createSheet() {
   };
 }
 
-function createHandler(turnstileSuccess = true) {
+function createHandler(turnstileResult = { success: true }) {
   const store = createSheet();
   const lock = { acquired: 0, released: 0, tryLock() { this.acquired += 1; return true; }, releaseLock() { this.released += 1; } };
   const source = fs.readFileSync(`${__dirname}/Code.gs`, 'utf8');
@@ -61,7 +61,7 @@ function createHandler(turnstileSuccess = true) {
     { openById: () => store.open() },
     { getScriptLock: () => lock },
     { getScriptProperties: () => ({ getProperty: () => 'test-secret' }) },
-    { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ success: turnstileSuccess }) }) },
+    { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify(turnstileResult) }) },
     { MimeType: { JSON: 'json' }, createTextOutput: (body) => ({ body, setMimeType() { return this; } }) },
     console
   );
@@ -98,11 +98,21 @@ assert.equal(response(accepted.doPost({ parameter: lead({ email: 'new@example.co
 assert.equal(accepted.store.countLeads(), 1, 'all duplicate paths should leave the count unchanged');
 assert.equal(response(accepted.doGet({ parameter: { action: 'count' } })).count, 1, 'duplicates should not inflate the family count');
 
-const rejected = createHandler(false);
+const rejected = createHandler({ success: false, 'error-codes': ['invalid-input-secret'] });
 const failedVerification = response(rejected.doPost({ parameter: lead({ email: 'other@example.com' }) }));
 assert.equal(failedVerification.success, false, 'failed Turnstile should be rejected');
+assert.equal(failedVerification.stage, 'turnstile', 'failed Turnstile should identify its stage');
+assert.deepEqual(failedVerification.errorCodes, ['invalid-input-secret'], 'failed Turnstile should return only safe Cloudflare error codes');
 assert.equal(rejected.store.openCalls, 0, 'failed Turnstile should not check or write the sheet');
 assert.equal(rejected.store.countLeads(), 0, 'failed Turnstile should not affect the count');
 assert.equal(rejected.lock.acquired, 0, 'failed Turnstile should not enter the duplicate-check lock');
+
+const missingToken = createHandler();
+const missingTokenParameters = lead({ email: 'missing-token@example.com' });
+delete missingTokenParameters['cf-turnstile-response'];
+assert.equal(response(missingToken.doPost({ parameter: missingTokenParameters })).stage, 'missing-token', 'missing token should have a distinct stage');
+
+const invalidLead = createHandler();
+assert.equal(response(invalidLead.doPost({ parameter: lead({ name: '' }) })).stage, 'validation', 'invalid form data should have a distinct stage');
 
 console.log('Early Access duplicate-prevention tests passed.');

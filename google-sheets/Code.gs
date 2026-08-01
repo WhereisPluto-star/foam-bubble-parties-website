@@ -17,19 +17,30 @@ function doPost(event) {
   logIncomingDiagnostics(parameters, diagnosticLead);
 
   try {
-    const lead = validateLead(parameters);
+    let lead;
+    try {
+      lead = validateLead(parameters);
+    } catch (error) {
+      throw createDiagnosticError('validation', 'Submission validation failed.');
+    }
     validationPassed = true;
     verifyTurnstile(parameters);
     turnstileVerified = true;
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(10000)) {
-      throw new Error('The early-access list is busy. Please try again shortly.');
+      throw createDiagnosticError('duplicate-check', 'The early-access list is busy. Please try again shortly.');
     }
 
     try {
-      const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-      if (!sheet) throw new Error(`Create a sheet tab named "${SHEET_NAME}" first.`);
-      const duplicateCheck = findExistingLead(sheet, lead);
+      let sheet;
+      let duplicateCheck;
+      try {
+        sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+        if (!sheet) throw new Error('Early Access sheet is unavailable.');
+        duplicateCheck = findExistingLead(sheet, lead);
+      } catch (error) {
+        throw createDiagnosticError('duplicate-check', 'We could not check the Early Access List.');
+      }
       logDuplicateCheck(diagnosticLead, duplicateCheck);
       if (duplicateCheck.duplicate) {
         logFinalDecision('duplicate');
@@ -40,20 +51,24 @@ function doPost(event) {
         });
       }
 
-      const row = getFirstOpenLeadRow(sheet);
-      logFinalDecision('accepted');
-      sheet.getRange(row, SUBMITTED_COLUMN, 1, 6).setValues([[
-        new Date(),
-        lead.name,
-        lead.email,
-        lead.phone,
-        '',
-        lead.eventType
-      ]]);
-      sheet.getRange(row, ZIP_COLUMN).setValue(lead.zip);
-      sheet.getRange(row, MARKETING_CONSENT_COLUMN).setValue(
-        lead.marketingConsent === 'Yes' ? 'Yes' : 'No'
-      );
+      try {
+        const row = getFirstOpenLeadRow(sheet);
+        logFinalDecision('accepted');
+        sheet.getRange(row, SUBMITTED_COLUMN, 1, 6).setValues([[
+          new Date(),
+          lead.name,
+          lead.email,
+          lead.phone,
+          '',
+          lead.eventType
+        ]]);
+        sheet.getRange(row, ZIP_COLUMN).setValue(lead.zip);
+        sheet.getRange(row, MARKETING_CONSENT_COLUMN).setValue(
+          lead.marketingConsent === 'Yes' ? 'Yes' : 'No'
+        );
+      } catch (error) {
+        throw createDiagnosticError('sheet-write', 'We could not save your details. Please try again shortly.');
+      }
 
       return createJsonResponse({ success: true });
     } finally {
@@ -63,21 +78,31 @@ function doPost(event) {
     if (!turnstileVerified) {
       logSkippedDuplicateCheck();
     }
-    const decision = !validationPassed
-      ? 'validation failed'
+    const stage = error.stage || (!validationPassed
+      ? 'validation'
       : !turnstileVerified
+        ? 'turnstile'
+        : 'unexpected');
+    const decision = stage === 'validation'
+      ? 'validation failed'
+      : ['missing-token', 'missing-secret', 'siteverify-request', 'siteverify-response', 'turnstile'].includes(stage)
         ? 'Turnstile failed'
         : 'other error';
     logFinalDecision(decision);
-    console.error(`Early Access submission error: ${error.message}`);
-    return createJsonResponse({ success: false, error: error.message });
+    console.error(`Early Access submission error stage: ${stage}`);
+    return createJsonResponse({
+      success: false,
+      stage,
+      errorCodes: safeErrorCodes(error.errorCodes),
+      message: error.publicMessage || 'We could not save your details. Please try again shortly.'
+    });
   }
 }
 
 function verifyTurnstile(parameters) {
   const token = String(parameters['cf-turnstile-response'] || '').trim();
   if (!token) {
-    throw new Error('Please complete the security check.');
+    throw createDiagnosticError('missing-token', 'Turnstile token is missing.');
   }
 
   // Apps Script has no process.env. Store this secret in Script Properties under
@@ -85,30 +110,54 @@ function verifyTurnstile(parameters) {
   const secret = PropertiesService.getScriptProperties().getProperty(TURNSTILE_SECRET_PROPERTY);
   if (!secret) {
     console.error('TURNSTILE_SECRET is not configured in Script Properties.');
-    throw new Error('We could not verify this submission. Please try again later.');
+    throw createDiagnosticError('missing-secret', 'Turnstile verification is unavailable.');
   }
 
-  let verification;
+  let response;
   try {
-    const response = UrlFetchApp.fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    response = UrlFetchApp.fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
       method: 'post',
       contentType: 'application/x-www-form-urlencoded',
       payload: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
       muteHttpExceptions: true
     });
-    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
-      throw new Error(`siteverify ${response.getResponseCode()}`);
-    }
+  } catch (error) {
+    console.error('Turnstile siteverify request failed.');
+    throw createDiagnosticError('siteverify-request', 'Turnstile verification is unavailable.');
+  }
+
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+    console.error(`Turnstile siteverify response status: ${response.getResponseCode()}`);
+    throw createDiagnosticError('siteverify-response', 'Turnstile verification is unavailable.');
+  }
+
+  let verification;
+  try {
     verification = JSON.parse(response.getContentText());
   } catch (error) {
-    console.error(`Turnstile verification failed: ${error.message}`);
-    throw new Error('We could not verify this submission. Please try again.');
+    console.error('Turnstile siteverify response could not be parsed.');
+    throw createDiagnosticError('siteverify-response', 'Turnstile verification is unavailable.');
   }
 
   if (verification.success !== true) {
-    console.warn(`Turnstile rejected submission: ${JSON.stringify(verification['error-codes'] || [])}`);
-    throw new Error('Please complete the security check and try again.');
+    const errorCodes = safeErrorCodes(verification['error-codes']);
+    console.warn(`Turnstile rejected submission: ${JSON.stringify(errorCodes)}`);
+    throw createDiagnosticError('turnstile', 'Turnstile verification failed.', errorCodes);
   }
+}
+
+function createDiagnosticError(stage, message, errorCodes = []) {
+  const error = new Error(message);
+  error.stage = stage;
+  error.publicMessage = message;
+  error.errorCodes = safeErrorCodes(errorCodes);
+  return error;
+}
+
+function safeErrorCodes(errorCodes) {
+  return Array.isArray(errorCodes)
+    ? errorCodes.filter((code) => typeof code === 'string').slice(0, 5)
+    : [];
 }
 
 function validateLead(parameters) {
