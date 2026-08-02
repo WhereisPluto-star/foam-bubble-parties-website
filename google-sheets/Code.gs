@@ -43,7 +43,9 @@ function doPost(event) {
         message: 'Turnstile verification failed.'
       });
     }
-    return respond({ success: false, message: 'Unable to save submission.' });
+    const message = error && error.message ? error.message : String(error);
+    const stack = error && error.stack ? error.stack : '[no stack available]';
+    return respond({ success: false, message, stack });
   }
 }
 

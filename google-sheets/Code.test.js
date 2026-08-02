@@ -53,7 +53,10 @@ assert.equal(rejected.rows.length, 0, 'failed Turnstile should not append a row'
 const missingToken = createHandler();
 const withoutToken = lead();
 delete withoutToken['cf-turnstile-response'];
-assert.deepEqual(result(missingToken.doPost({ parameter: withoutToken })), { success: false, message: 'Unable to save submission.' });
+const missingTokenResponse = result(missingToken.doPost({ parameter: withoutToken }));
+assert.equal(missingTokenResponse.success, false);
+assert.equal(missingTokenResponse.message, 'Turnstile verification failed.');
+assert.match(missingTokenResponse.stack, /verifyTurnstile/);
 assert.equal(missingToken.rows.length, 0, 'missing Turnstile token should not append a row');
 
 console.log('Minimal Early Access integration tests passed.');
