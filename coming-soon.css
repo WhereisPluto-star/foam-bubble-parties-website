@@ -229,3 +229,7 @@ button:hover,.foam-cta:hover,.early-access-modal-cta:hover { background:linear-g
   .brand-wordmark { flex-basis:129px; width:129px; height:39px; }
   .brand-wordmark img { left:-36px; height:39px; }
 }
+
+.footer-contact-link { color:rgba(255,255,255,.82); text-decoration:none; transition:color .2s ease; }
+.footer-contact-link:hover { color:var(--teal); }
+.footer-contact-link:focus-visible { outline:3px solid var(--teal); outline-offset:4px; }
