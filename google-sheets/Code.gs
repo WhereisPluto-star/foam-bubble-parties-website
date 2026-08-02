@@ -2,14 +2,21 @@ const SPREADSHEET_ID = '1HlOOeIg6Ggc8FgAN3GtPIX_3MBW2Mi9GHEU0m2S69Wg';
 const SHEET_NAME = 'Early Access Leads';
 
 function doPost(event) {
-  try {
-    const parameters = (event && event.parameter) || {};
-    verifyTurnstile(parameters['cf-turnstile-response']);
-    const lead = validateLead(parameters);
-    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-    if (!sheet) throw new Error('Early Access Leads sheet is missing.');
+  console.log('[Early Access] Request received.');
 
-    sheet.appendRow([
+  try {
+    const parameters = runStep('Parameters parsed', () => (event && event.parameter) || {}, (value) => (
+      `keys=${JSON.stringify(Object.keys(value).sort())}`
+    ));
+    runStep('Turnstile verification', () => verifyTurnstile(parameters['cf-turnstile-response']));
+    const lead = runStep('Lead validation', () => validateLead(parameters));
+    const spreadsheet = runStep('Spreadsheet opened', () => SpreadsheetApp.openById(SPREADSHEET_ID));
+    const sheet = runStep('Sheet found', () => {
+      const foundSheet = spreadsheet.getSheetByName(SHEET_NAME);
+      if (!foundSheet) throw new Error('Early Access Leads sheet is missing.');
+      return foundSheet;
+    });
+    runStep('Row append', () => sheet.appendRow([
       new Date(),
       lead.name,
       lead.email,
@@ -20,17 +27,19 @@ function doPost(event) {
       'Website Early Access',
       'New',
       ''
-    ]);
+    ]));
 
-    return json({ success: true });
+    return respond({ success: true });
   } catch (error) {
-    return json({ success: false, message: 'Unable to save submission.' });
+    logException('doPost', error);
+    return respond({ success: false, message: 'Unable to save submission.' });
   }
 }
 
 function verifyTurnstile(tokenValue) {
   const token = String(tokenValue || '').trim();
   const secret = PropertiesService.getScriptProperties().getProperty('TURNSTILE_SECRET');
+  console.log(`[Early Access] Turnstile inputs present: token=${Boolean(token)}, secret=${Boolean(secret)}.`);
   if (!token || !secret) throw new Error('Turnstile verification failed.');
 
   let response;
@@ -42,9 +51,11 @@ function verifyTurnstile(tokenValue) {
       muteHttpExceptions: true
     });
   } catch (error) {
+    logException('Turnstile Siteverify request', error);
     throw new Error('Turnstile verification failed.');
   }
 
+  console.log(`[Early Access] Turnstile Siteverify HTTP status: ${response.getResponseCode()}.`);
   if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
     throw new Error('Turnstile verification failed.');
   }
@@ -54,6 +65,7 @@ function verifyTurnstile(tokenValue) {
       throw new Error('Turnstile verification failed.');
     }
   } catch (error) {
+    logException('Turnstile Siteverify response', error);
     throw new Error('Turnstile verification failed.');
   }
 }
@@ -79,6 +91,30 @@ function validateLead(parameters) {
     eventType,
     marketingConsent: parameters.marketingConsent === 'Yes' ? 'Yes' : 'No'
   };
+}
+
+function runStep(name, operation, describeResult) {
+  console.log(`[Early Access] ${name}: start.`);
+  try {
+    const result = operation();
+    const details = describeResult ? ` ${describeResult(result)}` : '';
+    console.log(`[Early Access] ${name}: complete.${details}`);
+    return result;
+  } catch (error) {
+    logException(name, error);
+    throw error;
+  }
+}
+
+function logException(step, error) {
+  const message = error && error.message ? error.message : String(error);
+  const stack = error && error.stack ? error.stack : '[no stack available]';
+  console.error(`[Early Access] ${step}: ${message}\n${stack}`);
+}
+
+function respond(data) {
+  console.log(`[Early Access] JSON response returned: ${JSON.stringify(data)}`);
+  return json(data);
 }
 
 function json(data) {

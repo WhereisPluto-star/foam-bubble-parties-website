@@ -160,9 +160,22 @@ form.addEventListener('submit', async (event) => {
       body: new URLSearchParams(submission)
     });
 
+    const responseBody = await response.text();
+    console.log('Early Access Apps Script response:', {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get('content-type'),
+      body: responseBody
+    });
     if (!response.ok) throw new Error('server');
 
-    const result = await response.json();
+    let result;
+    try {
+      result = JSON.parse(responseBody);
+    } catch (parseError) {
+      console.error('Early Access Apps Script response was not valid JSON:', parseError);
+      throw new Error('server');
+    }
     if (!result.success) throw new Error('server');
 
     form.reset();
