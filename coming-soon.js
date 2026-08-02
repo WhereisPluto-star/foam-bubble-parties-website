@@ -176,7 +176,19 @@ form.addEventListener('submit', async (event) => {
       console.error('Early Access Apps Script response was not valid JSON:', parseError);
       throw new Error('server');
     }
-    if (!result.success) throw new Error('server');
+    if (!result.success) {
+      if (result.stage === 'turnstile') {
+        console.warn('Early Access Turnstile diagnostic:', {
+          stage: result.stage,
+          errorCodes: result.errorCodes || [],
+          hostname: result.hostname || '',
+          action: result.action || '',
+          cdata: result.cdata || ''
+        });
+        throw new Error('turnstile');
+      }
+      throw new Error('server');
+    }
 
     form.reset();
     resetTurnstile();

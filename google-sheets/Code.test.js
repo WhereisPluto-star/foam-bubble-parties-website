@@ -32,8 +32,22 @@ assert.deepEqual(accepted.rows[0].slice(1), [
   'Website Early Access', 'New', ''
 ]);
 
-const rejected = createHandler({ success: false });
-assert.deepEqual(result(rejected.doPost({ parameter: lead() })), { success: false, message: 'Unable to save submission.' });
+const rejected = createHandler({
+  success: false,
+  'error-codes': ['invalid-input-response'],
+  hostname: 'www.foambubbleparties.com',
+  action: 'turnstile-spin-v2',
+  cdata: ''
+});
+assert.deepEqual(result(rejected.doPost({ parameter: lead() })), {
+  success: false,
+  stage: 'turnstile',
+  errorCodes: ['invalid-input-response'],
+  hostname: 'www.foambubbleparties.com',
+  action: 'turnstile-spin-v2',
+  cdata: '',
+  message: 'Turnstile verification failed.'
+});
 assert.equal(rejected.rows.length, 0, 'failed Turnstile should not append a row');
 
 const missingToken = createHandler();

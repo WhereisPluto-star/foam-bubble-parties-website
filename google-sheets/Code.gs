@@ -32,6 +32,17 @@ function doPost(event) {
     return respond({ success: true });
   } catch (error) {
     logException('doPost', error);
+    if (error && error.stage === 'turnstile') {
+      return respond({
+        success: false,
+        stage: 'turnstile',
+        errorCodes: error.errorCodes,
+        hostname: error.hostname,
+        action: error.action,
+        cdata: error.cdata,
+        message: 'Turnstile verification failed.'
+      });
+    }
     return respond({ success: false, message: 'Unable to save submission.' });
   }
 }
@@ -60,14 +71,34 @@ function verifyTurnstile(tokenValue) {
     throw new Error('Turnstile verification failed.');
   }
 
+  let verification;
   try {
-    if (JSON.parse(response.getContentText()).success !== true) {
-      throw new Error('Turnstile verification failed.');
-    }
+    verification = JSON.parse(response.getContentText());
   } catch (error) {
     logException('Turnstile Siteverify response', error);
     throw new Error('Turnstile verification failed.');
   }
+
+  if (verification.success !== true) {
+    const diagnostic = {
+      errorCodes: Array.isArray(verification['error-codes']) ? verification['error-codes'] : [],
+      hostname: String(verification.hostname || ''),
+      action: String(verification.action || ''),
+      cdata: String(verification.cdata || '')
+    };
+    console.log(`[Early Access] Turnstile failure diagnostics: ${JSON.stringify(diagnostic)}`);
+    throw turnstileDiagnosticError(diagnostic);
+  }
+}
+
+function turnstileDiagnosticError(diagnostic) {
+  const error = new Error('Turnstile verification failed.');
+  error.stage = 'turnstile';
+  error.errorCodes = diagnostic.errorCodes;
+  error.hostname = diagnostic.hostname;
+  error.action = diagnostic.action;
+  error.cdata = diagnostic.cdata;
+  return error;
 }
 
 function validateLead(parameters) {
