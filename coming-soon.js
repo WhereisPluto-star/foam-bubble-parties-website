@@ -1,4 +1,4 @@
-const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxnPNqyrIoPzU15MIzhHXYu8oI2TFDPgYm2hhdVsVxykK8ZShqvWY6288aCbe3iAFI/exec';
+const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyBirAE1w9LV7HoOS9yhxbDtRfwfzebiBGoBraAJShyj51DVx0E-8KeUN0u2DGGwT1Q/exec';
 const bookingOpens = new Date('2027-01-01T00:00:00-05:00').getTime();
 
 function updateCountdown() {
