@@ -1,14 +1,15 @@
-:root { --ink:#160b2f; --muted:#625a72; --teal:#01cfcb; --pink:#fa2f86; --purple:#7137b0; --paper:#fffdfd; --line:rgba(22,11,47,.12); }
+:root { --ink:#160b2f; --muted:#625a72; --teal:#01cfcb; --pink:#fa2f86; --purple:#7137b0; --paper:#fffdfd; --line:rgba(22,11,47,.12); --visual-viewport-width:100vw; }
 * { box-sizing:border-box; }
-html { background:var(--paper); scroll-behavior:smooth; }
+html { background:#160b2f; scroll-behavior:smooth; }
 section[id] { scroll-margin-top:112px; }
-body { margin:0; overflow-x:hidden; color:var(--ink); font-family:"DM Sans",sans-serif; -webkit-font-smoothing:antialiased; }
+body { min-width:max(100%,var(--visual-viewport-width)); margin:0; overflow-x:hidden; color:var(--ink); background:var(--paper); font-family:"DM Sans",sans-serif; -webkit-font-smoothing:antialiased; }
 .container { width:min(1120px, calc(100% - 40px)); margin:auto; position:relative; }
 .hero { isolation:isolate; overflow:hidden; min-height:740px; padding:24px 0 64px; background:linear-gradient(90deg,rgba(16,8,39,.75) 0%,rgba(22,11,47,.57) 38%,rgba(22,11,47,.20) 62%,rgba(255,255,255,.10) 100%),url("assets/foam-party-hero-background.webp") center/cover no-repeat; }.hero .location { color:rgba(255,255,255,.92); }.hero .eyebrow { color:#d9cbff; }.hero h1 { color:#fff; text-shadow:0 8px 30px rgba(14,7,35,.28); }.hero .intro { color:rgba(255,255,255,.88); }.hero .opening-date { border-color:rgba(255,255,255,.24); background:rgba(255,255,255,.88); }.hero .countdown { border-color:rgba(255,255,255,.28); }.hero .countdown>p,.hero .timer span { color:rgba(255,255,255,.82); }.hero .timer strong { color:#fff; text-shadow:0 5px 18px rgba(14,7,35,.28); }
 .site-header { position:sticky; top:0; z-index:20; border-bottom:1px solid rgba(255,255,255,.14); background:rgba(22,11,47,.92); box-shadow:0 12px 34px rgba(22,11,47,.16); backdrop-filter:blur(16px); }.site-header .container { display:flex; align-items:center; justify-content:space-between; gap:18px; }.site-nav { display:flex; align-items:center; gap:7px; }.site-nav a { display:inline-flex; align-items:center; justify-content:center; min-height:34px; padding:0 11px; border:1px solid rgba(255,255,255,.25); border-radius:999px; background:rgba(255,255,255,.12); color:#fff; font-size:.71rem; font-weight:700; letter-spacing:.025em; text-decoration:none; white-space:nowrap; backdrop-filter:blur(12px); transition:background .2s,transform .2s,border-color .2s; }.site-nav a:hover { border-color:rgba(255,255,255,.65); background:rgba(255,255,255,.24); transform:translateY(-1px); }.site-nav a:focus-visible { outline:3px solid var(--teal); outline-offset:3px; }.site-nav .nav-cta { border-color:transparent; background:linear-gradient(110deg,var(--teal),#66e1de); color:var(--ink); }
-.brand-link { display:block; flex:0 0 auto; }
-.brand-link picture { display:block; }
-.logo { display:block; width:278px; height:auto; max-height:70px; object-fit:contain; }
+.brand-link { display:flex; flex:0 0 auto; align-items:center; gap:12px; min-width:0; }
+.brand-mark { display:block; flex:0 0 72px; width:72px; height:72px; object-fit:contain; }
+.brand-wordmark { position:relative; display:block; flex:0 0 238px; width:238px; height:72px; overflow:hidden; }
+.brand-wordmark img { position:absolute; top:0; left:-76px; display:block; width:auto; max-width:none; height:72px; }
 .header-meta { display:grid; justify-items:end; gap:7px; }.location { color:rgba(255,255,255,.92); font-size:.78rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }.social-links { display:flex; gap:6px; }.social-button { display:grid; width:28px; min-height:28px; place-items:center; margin:0; padding:0; border:1px solid rgba(255,255,255,.24); border-radius:50%; background:rgba(255,255,255,.10); box-shadow:none; color:rgba(255,255,255,.82); }.social-button:disabled { cursor:default; opacity:1; }.social-button svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.7; }.social-button:first-child svg { fill:currentColor; stroke:none; }.social-button:last-child svg path:first-child { fill:currentColor; stroke:none; }.social-button:last-child svg path:last-child { fill:var(--ink); stroke:none; }
 .hero-grid { display:grid; grid-template-columns:1.08fr .92fr; gap:72px; align-items:center; padding:42px 0 54px; }
 .eyebrow,.card-kicker { color:var(--purple); font-size:.77rem; letter-spacing:.14em; text-transform:uppercase; font-weight:700; }
@@ -185,4 +186,46 @@ button:hover,.foam-cta:hover,.early-access-modal-cta:hover { background:linear-g
   .site-nav a { font-size:.61rem; }
   .site-nav .nav-cta { padding:0 7px; }
   .signup-card { padding:24px 16px; }
+}
+
+/* Colored mark plus white wordmark keeps the brand readable at every header size. */
+@media (min-width:1051px) {
+  .brand-link { gap:13px; }
+  .brand-mark { flex-basis:82px; width:82px; height:82px; }
+  .brand-wordmark { flex-basis:272px; width:272px; height:82px; }
+  .brand-wordmark img { left:-87px; height:82px; }
+}
+
+@media (min-width:781px) and (max-width:1050px) {
+  .brand-link { gap:10px; }
+  .brand-mark { flex-basis:68px; width:68px; height:68px; }
+  .brand-wordmark { flex-basis:225px; width:225px; height:68px; }
+  .brand-wordmark img { left:-72px; height:68px; }
+}
+
+@media (max-width:780px) {
+  .brand-link { gap:9px; }
+  .brand-mark { flex-basis:56px; width:56px; height:56px; }
+  .brand-wordmark { flex-basis:185px; width:185px; height:56px; }
+  .brand-wordmark img { left:-59px; height:56px; }
+}
+
+@media (max-width:480px) {
+  .brand-link { gap:8px; }
+  .brand-mark { flex-basis:48px; width:48px; height:48px; }
+  .brand-wordmark { flex-basis:158px; width:158px; height:48px; }
+  .brand-wordmark img { left:-50px; height:48px; }
+}
+
+@media (max-width:390px) {
+  .brand-link { gap:7px; }
+  .brand-mark { flex-basis:43px; width:43px; height:43px; }
+  .brand-wordmark { flex-basis:142px; width:142px; height:43px; }
+  .brand-wordmark img { left:-46px; height:43px; }
+}
+
+@media (max-width:320px) {
+  .brand-mark { flex-basis:39px; width:39px; height:39px; }
+  .brand-wordmark { flex-basis:129px; width:129px; height:39px; }
+  .brand-wordmark img { left:-41px; height:39px; }
 }

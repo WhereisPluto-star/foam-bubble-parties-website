@@ -1,6 +1,15 @@
 const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyBirAE1w9LV7HoOS9yhxbDtRfwfzebiBGoBraAJShyj51DVx0E-8KeUN0u2DGGwT1Q/exec';
 const bookingOpens = new Date('2027-01-01T00:00:00-05:00').getTime();
 
+function syncVisualViewportWidth() {
+  const width = window.visualViewport?.width || window.innerWidth;
+  document.documentElement.style.setProperty('--visual-viewport-width', `${Math.ceil(width)}px`);
+}
+
+syncVisualViewportWidth();
+window.addEventListener('resize', syncVisualViewportWidth, { passive: true });
+window.visualViewport?.addEventListener('resize', syncVisualViewportWidth, { passive: true });
+
 function updateCountdown() {
   const remaining = Math.max(0, bookingOpens - Date.now());
   const units = { days: 86400000, hours: 3600000, minutes: 60000, seconds: 1000 };
