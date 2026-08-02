@@ -22,10 +22,6 @@ const emailInput = document.getElementById('email');
 const phoneInput = document.getElementById('phone');
 const zipInput = document.getElementById('zip');
 const consentInput = document.getElementById('marketing-consent');
-const familyCounter = document.getElementById('family-counter');
-const familyCount = document.getElementById('family-count');
-const familyCountMessage = document.getElementById('family-count-message');
-let knownFamilyCount = null;
 const earlyAccessModal = document.getElementById('early-access-modal');
 let formIsVisible = true;
 let hasScrolled = false;
@@ -107,30 +103,6 @@ function validateLeadFields() {
     : 'Please agree to receive updates to join the Early Access List.');
 }
 
-function resetTurnstile() {
-  if (window.turnstile) window.turnstile.reset();
-}
-
-function updateFamilyCount(count) {
-  if (!Number.isInteger(count) || count < 0) return;
-  knownFamilyCount = count;
-  familyCount.textContent = String(count);
-  familyCountMessage.textContent = count === 1
-    ? 'Greater Dayton family has joined the early-access list.'
-    : 'Greater Dayton families have joined the early-access list.';
-  familyCounter.hidden = false;
-}
-
-async function loadFamilyCount() {
-  try {
-    const response = await fetch(GOOGLE_SHEETS_WEB_APP_URL, { method: 'GET' });
-    const result = await response.json();
-    if (response.ok && result.success) updateFamilyCount(Number(result.count));
-  } catch {
-    // A counter outage must never interrupt the signup form.
-  }
-}
-
 phoneInput.addEventListener('input', () => {
   phoneInput.value = formatPhoneNumber(phoneInput.value);
   phoneInput.setCustomValidity('');
@@ -144,8 +116,6 @@ phoneInput.addEventListener('input', () => {
 [nameInput, emailInput, phoneInput, zipInput, consentInput].forEach((field) => {
   field.addEventListener('blur', validateLeadFields);
 });
-
-loadFamilyCount();
 
 document.querySelectorAll('.faq-trigger').forEach((trigger) => {
   const toggleFaq = () => {
@@ -168,12 +138,6 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   validateLeadFields();
   if (!form.reportValidity()) return;
-  const turnstileToken = form.querySelector('[name="cf-turnstile-response"]')?.value;
-  if (!turnstileToken) {
-    status.className = 'form-status error';
-    status.textContent = 'Please complete the security check and try again.';
-    return;
-  }
   if (!GOOGLE_SHEETS_WEB_APP_URL) {
     status.className = 'form-status error';
     status.textContent = 'The early-access list is being connected. Please check back shortly.';
@@ -203,29 +167,15 @@ form.addEventListener('submit', async (event) => {
     } catch {
       throw new Error('server');
     }
-    if (!result.success) {
-      throw new Error(result.stage || 'save');
-    }
+    if (!result.success) throw new Error('save');
 
     status.className = 'form-status success';
-    if (result.duplicate) {
-      status.textContent = 'You’re already on the Early Access List! We’ll contact you when booking opens.';
-    } else {
-      form.reset();
-      if (knownFamilyCount !== null) updateFamilyCount(knownFamilyCount + 1);
-      status.textContent = 'You’re on the Early Access List!';
-    }
+    form.reset();
+    status.textContent = 'You’re on the Early Access List!';
   } catch (error) {
     status.className = 'form-status error';
-    if (error.message === 'turnstile') {
-      status.textContent = 'Please complete the security check and try again.';
-    } else if (error.message === 'validation') {
-      status.textContent = 'Please check your information and try again.';
-    } else {
-      status.textContent = 'We couldn’t save your details. Please try again shortly.';
-    }
+    status.textContent = 'We couldn’t save your details. Please try again shortly.';
   } finally {
-    resetTurnstile();
     submitButton.disabled = false;
     submitButton.innerHTML = 'Join the early-access list <span aria-hidden="true">→</span>';
   }

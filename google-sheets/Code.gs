@@ -2,57 +2,28 @@ const SPREADSHEET_ID = '1WQBydVbWZVXUTO2f-Q-wS8cpd5HQTHmeU7c_fsJGnFU';
 const SHEET_NAME = 'Early Access Leads';
 
 function doPost(event) {
-  const parameters = (event && event.parameter) || {};
-  const token = String(parameters['cf-turnstile-response'] || '').trim();
-
-  if (!token || !verifyTurnstile(token)) {
-    return json({ success: false, stage: 'turnstile' });
-  }
-
-  let lead;
   try {
-    lead = validateLead(parameters);
-  } catch (error) {
-    return json({ success: false, stage: 'validation' });
-  }
+    const lead = validateLead((event && event.parameter) || {});
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
 
-  try {
-    const result = saveLead(lead);
-    return json({
-      success: true,
-      duplicate: result.duplicate,
-      message: result.duplicate
-        ? "You're already on the Early Access List!"
-        : "You're on the Early Access List!"
-    });
-  } catch (error) {
-    return json({ success: false, stage: 'save', message: 'Unable to save submission.' });
-  }
-}
+    if (!sheet) throw new Error('Early Access Leads sheet is missing.');
 
-function doGet() {
-  try {
-    const sheet = getLeadSheet();
-    return json({ success: true, count: getLeadCount(sheet) });
-  } catch (error) {
-    return json({ success: false, count: 0 });
-  }
-}
+    sheet.appendRow([
+      new Date(),
+      lead.name,
+      lead.email,
+      formatPhone(lead.phoneDigits),
+      lead.zip,
+      lead.eventType,
+      lead.marketingConsent,
+      'Website Early Access',
+      'New',
+      ''
+    ]);
 
-function verifyTurnstile(token) {
-  const secret = PropertiesService.getScriptProperties().getProperty('TURNSTILE_SECRET');
-  if (!secret) return false;
-
-  try {
-    const response = UrlFetchApp.fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'post',
-      payload: { secret, response: token },
-      muteHttpExceptions: true
-    });
-    const verification = JSON.parse(response.getContentText());
-    return verification.success === true;
+    return json({ success: true });
   } catch (error) {
-    return false;
+    return json({ success: false, message: 'Unable to save submission.' });
   }
 }
 
@@ -71,57 +42,6 @@ function validateLead(parameters) {
   if (!eventType || marketingConsent !== 'Yes') throw new Error('Invalid form data.');
 
   return { name, email, phoneDigits, zip, eventType, marketingConsent };
-}
-
-function saveLead(lead) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-
-  try {
-    const sheet = getLeadSheet();
-    const lastRow = sheet.getLastRow();
-    const existingLeads = lastRow > 1
-      ? sheet.getRange(2, 3, lastRow - 1, 2).getValues()
-      : [];
-    const duplicate = existingLeads.some(([email, phone]) => (
-      String(email || '').trim().toLowerCase() === lead.email
-      || String(phone || '').replace(/\D/g, '') === lead.phoneDigits
-    ));
-
-    if (duplicate) return { duplicate: true };
-
-    sheet.appendRow([
-      new Date(),
-      lead.name,
-      lead.email,
-      formatPhone(lead.phoneDigits),
-      lead.zip,
-      lead.eventType,
-      lead.marketingConsent,
-      'Website Early Access',
-      'New',
-      ''
-    ]);
-
-    return { duplicate: false };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function getLeadSheet() {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-  if (!sheet) throw new Error('Early Access Leads sheet is missing.');
-  return sheet;
-}
-
-function getLeadCount(sheet) {
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return 0;
-
-  return sheet.getRange(2, 1, lastRow - 1, 10).getValues()
-    .filter((row) => row.slice(1, 7).some((value) => String(value || '').trim() !== ''))
-    .length;
 }
 
 function formatPhone(digits) {
