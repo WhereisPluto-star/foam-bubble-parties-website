@@ -18,7 +18,6 @@
     gtag('js', new Date());
     gtag('config', 'G-3KVBQWDKY0');
   </script>
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <link rel="preload" as="image" href="assets/foam-party-hero-background.webp">
   <link rel="stylesheet" href="coming-soon.css">
 </head>
@@ -107,15 +106,12 @@
                   <option>Just curious for now</option>
                 </select>
                 <label class="consent" for="marketing-consent">
-                  <input id="marketing-consent" name="marketingConsent" type="checkbox" value="Yes">
+                  <input id="marketing-consent" name="marketingConsent" type="checkbox" value="Yes" required>
                   <span>I agree to receive occasional email and text updates from Foam Bubble Parties. Message and data rates may apply. Reply STOP to opt out.</span>
                 </label>
                 <div class="honeypot" aria-hidden="true">
                   <label for="website">Leave this field empty</label>
                   <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
-                </div>
-                <div class="turnstile-wrap" aria-label="Security check">
-                  <div class="cf-turnstile" data-sitekey="0x4AAAAAAED4yG9PnXdo0ziF" data-action="turnstile-spin-v2" data-size="flexible"></div>
                 </div>
                 <button type="submit">Join the early-access list <span aria-hidden="true">→</span></button>
                 <p class="form-status" id="form-status" role="status" aria-live="polite"></p>

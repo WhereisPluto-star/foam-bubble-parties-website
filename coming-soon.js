@@ -99,10 +99,6 @@ function validateLeadFields() {
     : 'Please enter a valid 10-digit U.S. phone number.');
 }
 
-function resetTurnstile() {
-  if (window.turnstile) window.turnstile.reset();
-}
-
 phoneInput.addEventListener('input', () => {
   phoneInput.value = formatPhoneNumber(phoneInput.value);
   phoneInput.setCustomValidity('');
@@ -133,11 +129,6 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   validateLeadFields();
   if (!form.reportValidity()) return;
-  if (!form.querySelector('[name="cf-turnstile-response"]')?.value) {
-    status.className = 'form-status error';
-    status.textContent = 'Please complete the security check.';
-    return;
-  }
   if (!GOOGLE_SHEETS_WEB_APP_URL) {
     status.className = 'form-status error';
     status.textContent = 'The early-access list is being connected. Please check back shortly.';
@@ -161,46 +152,23 @@ form.addEventListener('submit', async (event) => {
     });
 
     const responseBody = await response.text();
-    console.log('Early Access Apps Script response:', {
-      status: response.status,
-      ok: response.ok,
-      contentType: response.headers.get('content-type'),
-      body: responseBody
-    });
     if (!response.ok) throw new Error('server');
 
     let result;
     try {
       result = JSON.parse(responseBody);
-    } catch (parseError) {
-      console.error('Early Access Apps Script response was not valid JSON:', parseError);
+    } catch {
       throw new Error('server');
     }
-    if (!result.success) {
-      if (result.stage === 'turnstile') {
-        console.warn('Early Access Turnstile diagnostic:', {
-          stage: result.stage,
-          errorCodes: result.errorCodes || [],
-          hostname: result.hostname || '',
-          action: result.action || '',
-          cdata: result.cdata || ''
-        });
-        throw new Error('turnstile');
-      }
-      throw new Error('server');
-    }
+    if (!result.success) throw new Error('server');
 
     form.reset();
-    resetTurnstile();
     status.className = 'form-status success';
     status.textContent = 'You’re on the Early Access List!';
   } catch (error) {
     console.error('Early-access form submission failed:', error);
     status.className = 'form-status error';
-    status.textContent = error.message === 'turnstile'
-      ? 'Please complete the security check and try again.'
-      : 'We couldn’t save your details. Please try again shortly.';
-    resetTurnstile();
+    status.textContent = 'We couldn’t save your details. Please try again shortly.';
   } finally {
     submitButton.disabled = false;
     submitButton.innerHTML = 'Join the early-access list <span aria-hidden="true">→</span>';
