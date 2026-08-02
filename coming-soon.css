@@ -159,3 +159,30 @@ button:hover,.foam-cta:hover,.early-access-modal-cta:hover { background:linear-g
   .footer-main { grid-template-columns:1fr; }
   .footer-brand { grid-column:auto; }
 }
+
+/* Keep the mobile header and conversion card comfortably inside narrow phone edges. */
+@media (max-width:480px) {
+  .container,.foam-layout,.service-area,.faq-inner { width:calc(100% - 28px); }
+  .site-header .container { min-height:80px; gap:10px; }
+  .logo { width:68px; height:68px; }
+  .header-meta { gap:5px; }
+  .social-links { gap:4px; }
+  .social-button { width:26px; min-height:26px; }
+  .site-nav { justify-content:center; gap:6px; padding:2px 0 9px; overflow:visible; flex-wrap:wrap; }
+  .site-nav a { min-height:34px; padding:0; font-size:.63rem; }
+  .site-nav .nav-cta { min-height:34px; padding:0 8px; }
+  .hero { padding:24px 0 48px; }
+  .hero-grid { gap:34px; padding:30px 0 42px; }
+  .signup-card { padding:26px 18px; border-radius:24px; }
+  .signup-card h2 { font-size:clamp(2rem,10vw,2.35rem); }
+  .early-access-perks { padding:17px 16px; border-radius:20px; }
+  .footer-main { padding-right:0; padding-left:0; }
+}
+
+@media (max-width:320px) {
+  section[id] { scroll-margin-top:190px; }
+  .site-nav { gap:5px 8px; }
+  .site-nav a { font-size:.61rem; }
+  .site-nav .nav-cta { padding:0 7px; }
+  .signup-card { padding:24px 16px; }
+}
