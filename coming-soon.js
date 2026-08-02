@@ -1,5 +1,4 @@
-// Paste the deployed Google Apps Script web-app URL here after completing google-sheets/SETUP.md.
-const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx0LqHFz9e4NZTT5sY7QB9BXYQNkLTFU-sz8jzdVl00QND7haAjd2xzU1qVrW_PnjNZQQ/exec';
+const GOOGLE_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxnPNqyrIoPzU15MIzhHXYu8oI2TFDPgYm2hhdVsVxykK8ZShqvWY6288aCbe3iAFI/exec';
 const bookingOpens = new Date('2027-01-01T00:00:00-05:00').getTime();
 
 function updateCountdown() {
@@ -21,6 +20,12 @@ const status = document.getElementById('form-status');
 const nameInput = document.getElementById('name');
 const emailInput = document.getElementById('email');
 const phoneInput = document.getElementById('phone');
+const zipInput = document.getElementById('zip');
+const consentInput = document.getElementById('marketing-consent');
+const familyCounter = document.getElementById('family-counter');
+const familyCount = document.getElementById('family-count');
+const familyCountMessage = document.getElementById('family-count-message');
+let knownFamilyCount = null;
 const earlyAccessModal = document.getElementById('early-access-modal');
 let formIsVisible = true;
 let hasScrolled = false;
@@ -67,11 +72,6 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeEarlyAccessOffer();
 });
 
-function isObviousFakePhone(digits) {
-  return /^(\d)\1{9}$/.test(digits)
-    || ['0123456789', '1234567890', '9876543210'].includes(digits);
-}
-
 function formatPhoneNumber(value) {
   const digits = value.replace(/\D/g, '').slice(0, 10);
   if (digits.length < 4) return digits;
@@ -83,10 +83,12 @@ function validateLeadFields() {
   const name = nameInput.value.trim().replace(/\s+/g, ' ');
   const email = emailInput.value.trim().toLowerCase();
   const phoneDigits = phoneInput.value.replace(/\D/g, '');
+  const zipDigits = zipInput.value.replace(/\D/g, '').slice(0, 5);
 
   nameInput.value = name;
   emailInput.value = email;
   phoneInput.value = formatPhoneNumber(phoneDigits);
+  zipInput.value = zipDigits;
 
   nameInput.setCustomValidity(name.length >= 2 && /[a-zA-Z]/.test(name)
     ? ''
@@ -94,9 +96,39 @@ function validateLeadFields() {
   emailInput.setCustomValidity(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
     ? ''
     : 'Please enter a valid email address.');
-  phoneInput.setCustomValidity(phoneDigits.length === 10 && !isObviousFakePhone(phoneDigits)
+  phoneInput.setCustomValidity(phoneDigits.length === 10
     ? ''
     : 'Please enter a valid 10-digit U.S. phone number.');
+  zipInput.setCustomValidity(zipDigits.length === 5
+    ? ''
+    : 'Please enter a valid 5-digit ZIP code.');
+  consentInput.setCustomValidity(consentInput.checked
+    ? ''
+    : 'Please agree to receive updates to join the Early Access List.');
+}
+
+function resetTurnstile() {
+  if (window.turnstile) window.turnstile.reset();
+}
+
+function updateFamilyCount(count) {
+  if (!Number.isInteger(count) || count < 0) return;
+  knownFamilyCount = count;
+  familyCount.textContent = String(count);
+  familyCountMessage.textContent = count === 1
+    ? 'Greater Dayton family has joined the early-access list.'
+    : 'Greater Dayton families have joined the early-access list.';
+  familyCounter.hidden = false;
+}
+
+async function loadFamilyCount() {
+  try {
+    const response = await fetch(GOOGLE_SHEETS_WEB_APP_URL, { method: 'GET' });
+    const result = await response.json();
+    if (response.ok && result.success) updateFamilyCount(Number(result.count));
+  } catch {
+    // A counter outage must never interrupt the signup form.
+  }
 }
 
 phoneInput.addEventListener('input', () => {
@@ -104,9 +136,16 @@ phoneInput.addEventListener('input', () => {
   phoneInput.setCustomValidity('');
 });
 
-[nameInput, emailInput, phoneInput].forEach((field) => {
+[zipInput, consentInput].forEach((field) => {
+  field.addEventListener('input', () => field.setCustomValidity(''));
+  field.addEventListener('change', () => field.setCustomValidity(''));
+});
+
+[nameInput, emailInput, phoneInput, zipInput, consentInput].forEach((field) => {
   field.addEventListener('blur', validateLeadFields);
 });
+
+loadFamilyCount();
 
 document.querySelectorAll('.faq-trigger').forEach((trigger) => {
   const toggleFaq = () => {
@@ -129,6 +168,12 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   validateLeadFields();
   if (!form.reportValidity()) return;
+  const turnstileToken = form.querySelector('[name="cf-turnstile-response"]')?.value;
+  if (!turnstileToken) {
+    status.className = 'form-status error';
+    status.textContent = 'Please complete the security check and try again.';
+    return;
+  }
   if (!GOOGLE_SHEETS_WEB_APP_URL) {
     status.className = 'form-status error';
     status.textContent = 'The early-access list is being connected. Please check back shortly.';
@@ -141,8 +186,6 @@ form.addEventListener('submit', async (event) => {
   status.textContent = '';
   try {
     const submission = new FormData(form);
-    submission.set('source', 'Website Early Access');
-    submission.set('status', 'New');
     const response = await fetch(GOOGLE_SHEETS_WEB_APP_URL, {
       method: 'POST',
       headers: {
@@ -160,16 +203,29 @@ form.addEventListener('submit', async (event) => {
     } catch {
       throw new Error('server');
     }
-    if (!result.success) throw new Error('server');
+    if (!result.success) {
+      throw new Error(result.stage || 'save');
+    }
 
-    form.reset();
     status.className = 'form-status success';
-    status.textContent = 'You’re on the Early Access List!';
+    if (result.duplicate) {
+      status.textContent = 'You’re already on the Early Access List! We’ll contact you when booking opens.';
+    } else {
+      form.reset();
+      if (knownFamilyCount !== null) updateFamilyCount(knownFamilyCount + 1);
+      status.textContent = 'You’re on the Early Access List!';
+    }
   } catch (error) {
-    console.error('Early-access form submission failed:', error);
     status.className = 'form-status error';
-    status.textContent = 'We couldn’t save your details. Please try again shortly.';
+    if (error.message === 'turnstile') {
+      status.textContent = 'Please complete the security check and try again.';
+    } else if (error.message === 'validation') {
+      status.textContent = 'Please check your information and try again.';
+    } else {
+      status.textContent = 'We couldn’t save your details. Please try again shortly.';
+    }
   } finally {
+    resetTurnstile();
     submitButton.disabled = false;
     submitButton.innerHTML = 'Join the early-access list <span aria-hidden="true">→</span>';
   }
